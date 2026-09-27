@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from vidsub.srt import parse_srt_file  # noqa: E402
 
 _KEEP = re.compile(r"[一-鿿 a-zA-Z0-9]")
-_EN_RUN = re.compile(r"[A-Za-z][A-Za-Z0-9+#.\-]*")
+_EN_RUN = re.compile(r"[A-Za-z][A-Za-z0-9+#.\-]*")
 
 
 def srt_text(path: str) -> str:
