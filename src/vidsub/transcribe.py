@@ -95,9 +95,9 @@ def transcribe_audio(
         from faster_whisper import BatchedInferencePipeline
 
         pipe = BatchedInferencePipeline(model=model)
-        seg_iter, info = pipe.transcribe(**kwargs, batch_size=batch_size)
+        seg_iter, info = pipe.transcribe(str(audio_path), **kwargs, batch_size=batch_size)
     else:
-        seg_iter, info = model.transcribe(**kwargs)
+        seg_iter, info = model.transcribe(str(audio_path), **kwargs)
 
     segments: list[Segment] = []
     for seg in seg_iter:
