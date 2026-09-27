@@ -1,0 +1,22 @@
+# 机密文件，永不入库
+user_access_methods.txt
+docs/video_process.txt
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# 模型与产物
+.hf-cache/
+data/
+*.wav
+*.mp4
+*.srt
+!tests/fixtures/**
+
+# 其他
+.omc/
+.DS_Store
