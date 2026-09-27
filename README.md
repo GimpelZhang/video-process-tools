@@ -17,6 +17,7 @@
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt   # 国内可加 -i https://pypi.tuna.tsinghua.edu.cn/simple
+pip install -e .                  # 安装 vidsub 命令（可编辑模式）
 ```
 
 模型默认从 HuggingFace 下载到 `~/.cache/huggingface`。国内网络请先设置镜像：
@@ -31,24 +32,24 @@ GPU 所需的 cuBLAS/cuDNN 来自 pip 包，工具启动时自动预加载，**�
 
 ```bash
 # 1) 抽取 16kHz 单声道音频
-PYTHONPATH=src python -m vidsub extract input.mp4
+vidsub extract input.mp4
 #    → data/audio/input.wav
 
 # 2) GPU 转写生成 SRT
-PYTHONPATH=src python -m vidsub transcribe data/audio/input.wav
+vidsub transcribe data/audio/input.wav
 #    → data/srt/input.srt
 # 也可直接对视频执行 transcribe（自动抽音），或一键运行：
-PYTHONPATH=src python -m vidsub run input.mp4
+vidsub run input.mp4
 
 # 3) 人工校对
 cp data/srt/input.srt data/srt/input.reviewed.srt
 #   用任意文本/字幕编辑器（推荐 Subtitle Edit）修改正文
-PYTHONPATH=src python -m vidsub validate data/srt/input.reviewed.srt --video input.mp4
+vidsub validate data/srt/input.reviewed.srt --video input.mp4
 
 # 4) 合成
-PYTHONPATH=src python -m vidsub mux input.mp4 data/srt/input.reviewed.srt
+vidsub mux input.mp4 data/srt/input.reviewed.srt
 #    → data/output/input.subbed.mp4
-PYTHONPATH=src python -m vidsub mux input.mp4 data/srt/input.reviewed.srt --soft
+vidsub mux input.mp4 data/srt/input.reviewed.srt --soft
 #    → 软字幕版（不重编码视频）
 ```
 
@@ -74,7 +75,7 @@ bash scripts/spotcheck.sh data/audio/input.wav 62.4 65.8 /tmp/clip.wav  # 抽片
 | 现象 | 处理 |
 |---|---|
 | `Library cudnn*.9 not found` | 确认已安装 pip 版 nvidia-cudnn-cu12；工具会自动预加载 |
-| 模型下载停滞/失败 | 设 `HF_ENDPOINT=https://hf-mirror.com`，用 `huggingface-cli download` 断点续传；备选 ModelScope |
+| 模型下载停滞/失败 | 设 `HF_ENDPOINT=https://hf-mirror.com`，用 `hf download` 断点续传；备选 ModelScope |
 | nvenc 报错（ffmpeg 4.4） | 工具自动回退 `medium` 预设，再回退 libx264 |
 | 烧录后字幕是方块/缺字 | force_style 指定系统已安装的中文字体（Noto Sans CJK SC） |
 | 成片音轨兼容性差 | 源音轨为 Vorbis 时，成品自动转 AAC 192k |
@@ -83,7 +84,7 @@ bash scripts/spotcheck.sh data/audio/input.wav 62.4 65.8 /tmp/clip.wav  # 抽片
 
 ```bash
 pip install -r requirements-dev.txt
-PYTHONPATH=src pytest tests/ -q
+pytest tests/ -q
 ```
 
 ## 许可证
