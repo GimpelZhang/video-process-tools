@@ -41,6 +41,11 @@ def download_one(repo: str, filename: str, dest: str) -> None:
     url = f"{ENDPOINT}/{repo}/resolve/main/{filename}"
     os.makedirs(os.path.dirname(dest) or ".", exist_ok=True)
     total = remote_size(url)
+    if total == 0:
+        os.makedirs(os.path.dirname(dest) or ".", exist_ok=True)
+        open(dest, "wb").close()
+        print(f"  跳过空文件：{filename}", flush=True)
+        return
     attempt = 0
     while True:
         have = os.path.getsize(dest) if os.path.exists(dest) else 0
@@ -48,12 +53,15 @@ def download_one(repo: str, filename: str, dest: str) -> None:
             print(f"  完成：{filename}（{have // 1024 // 1024}MB）", flush=True)
             return
         headers = {"Range": f"bytes={have}-"} if have else {}
-        mode = "ab" if have else "wb"
         attempt += 1
         try:
             with requests.get(url, headers=headers, stream=True, timeout=60) as r:
                 if r.status_code not in (200, 206):
-                    raise requests.RequestException(f"HTTP {r.status_code}")
+                    raise requests.RequestException(f"HTTP {r.status_code}", response=r)
+                # 200 = 服务器给了完整内容（忽略 Range），必须重写
+                if have and r.status_code == 200:
+                    have = 0
+                mode = "ab" if r.status_code == 206 else "wb"
                 if total is None:
                     cl = r.headers.get("Content-Length")
                     if cl:
@@ -69,6 +77,14 @@ def download_one(repo: str, filename: str, dest: str) -> None:
                                 print(f"  {filename}: {pct}", flush=True)
                                 last_print = time.time()
         except requests.RequestException as exc:
+            # 416 Range Not Satisfiable：空文件，或实际已下完
+            if getattr(exc.response, "status_code", None) == 416:
+                if have > 0:
+                    print(f"  完成：{filename}（{have // 1024 // 1024}MB）", flush=True)
+                    return
+                open(dest, "wb").close()
+                print(f"  跳过空文件：{filename}", flush=True)
+                return
             wait = min(2 * attempt, 30)
             print(f"  {filename} 第 {attempt} 次中断（{exc}），{wait}s 后续传 "
                   f"（已 {os.path.getsize(dest) // 1048576 if os.path.exists(dest) else 0}MB）",
