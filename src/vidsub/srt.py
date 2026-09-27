@@ -121,8 +121,12 @@ class Unit:
     end: float
 
 
-def _build_units(segments: list[Segment]) -> list[Unit]:
-    """按标点把词流切成最小分句单元，标点跟随前一单元。"""
+def _build_units(segments: list[Segment], pause_split_s: float = 0.3) -> list[Unit]:
+    """按标点把词流切成最小分句单元，标点跟随前一单元。
+
+    另外，相邻词停顿 ≥ pause_split_s 时也断开（Plan 2.2 规则3），
+    避免无标点长句无法切分。
+    """
     units: list[Unit] = []
     cur: list[Word] = []
 
@@ -139,7 +143,11 @@ def _build_units(segments: list[Segment]) -> list[Unit]:
         words = seg.words
         if not words:
             continue
-        for w in words:
+        for i, w in enumerate(words):
+            if cur and pause_split_s > 0:
+                gap = w.start - cur[-1].end
+                if gap >= pause_split_s:
+                    flush()
             cur.append(w)
             if w.text and w.text[-1] in _PUNCT:
                 flush()
@@ -152,47 +160,75 @@ def _build_units(segments: list[Segment]) -> list[Unit]:
 # ---------------- 行折叠 ----------------
 
 def _wrap_lines(text: str, max_lines: int, col_per_line: int) -> list[str]:
-    """把文本折成 ≤ max_lines 行。优先在 CJK 边界/空格/标点处断行。"""
+    """把文本折成 ≤ max_lines 行。
+
+    在可断点（空格、CJK 字符/标点之后）中选行宽最均衡的切法，
+    避免行末把词劈开只剩一个字。
+    """
     max_col = max_lines * col_per_line
     text = text.strip()
-    if display_width(text) <= col_per_line or max_lines <= 1:
-        return [text] if display_width(text) <= max_col else _hard_wrap(text, max_lines, col_per_line)
+    width = display_width(text)
+    if width <= col_per_line:
+        return [text]
+    if max_lines <= 1 or width > max_col:
+        return _hard_wrap(text, max_lines, col_per_line)
 
     lines: list[str] = []
     rest = text
-    while rest and len(lines) < max_lines:
-        limit = col_per_line if len(lines) < max_lines - 1 else max_col - sum(
-            display_width(x) for x in lines
-        )
-        cut = _find_wrap_point(rest, limit)
-        piece, rest = rest[:cut].strip(), rest[cut:].strip()
+    remaining_slots = max_lines
+    while rest and remaining_slots > 0:
+        w = display_width(rest)
+        if w <= col_per_line or remaining_slots == 1:
+            lines.append(rest)
+            break
+        # 需要的行数与理想切分位置
+        lines_needed = max(2, -(-w // col_per_line))  # ceil
+        if lines_needed > remaining_slots:
+            lines_needed = remaining_slots
+        target = w / lines_needed
+        cut = _find_wrap_point(rest, col_per_line, target)
+        piece, rest = rest[:cut].rstrip(), rest[cut:]
+        # 标点不允许出现在行首：把前导标点移到上一行末尾
+        m = re.match(rf"^[{re.escape(_PUNCT)}]+", rest)
+        if m:
+            piece += m.group(0)
+            rest = rest[m.end():]
+        piece, rest = piece.strip(), rest.strip()
         if piece:
             lines.append(piece)
+            remaining_slots -= 1
         if not rest:
             break
-    if rest:
-        # 理论上不会到这里（单元打包已限宽），兜底硬切
-        lines[-1] = (lines[-1] + rest)[: col_per_line * 2]
     return lines
 
 
-def _find_wrap_point(text: str, limit_cols: int) -> int:
+def _break_candidates(text: str, limit_cols: int) -> list[tuple[int, int]]:
+    """返回截至 limit_cols 的可断点 [(字符位置, 累计列宽)]。"""
+    candidates: list[tuple[int, int]] = []
     width = 0
-    best = 0
-    i = 0
-    while i < len(text):
-        ch = text[i]
-        w = 2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1
-        if width + w > limit_cols:
+    for i, ch in enumerate(text):
+        cw = 2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1
+        if width + cw > limit_cols:
             break
-        width += w
-        i += 1
-        # 可断点：空格、CJK 字符之后、标点之后
-        if ch == " ":
-            best = i
-        elif unicodedata.east_asian_width(ch) in ("W", "F") or ch in _PUNCT:
-            best = i
-    return best if best > 0 else i
+        width += cw
+        if ch == " " or unicodedata.east_asian_width(ch) in ("W", "F") or ch in _PUNCT:
+            candidates.append((i + 1, width))
+    return candidates
+
+
+def _find_wrap_point(text: str, limit_cols: int, target_cols: float) -> int:
+    candidates = _break_candidates(text, limit_cols)
+    if not candidates:
+        # 英文长词等：在列限处硬切
+        width = 0
+        for i, ch in enumerate(text):
+            cw = 2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1
+            if width + cw > limit_cols:
+                return i
+            width += cw
+        return len(text)
+    # 选离理想切分位置最近的断点（行宽均衡）
+    return min(candidates, key=lambda c: abs(c[1] - target_cols))[0]
 
 
 def _hard_wrap(text: str, max_lines: int, col_per_line: int) -> list[str]:
@@ -211,6 +247,60 @@ def _hard_wrap(text: str, max_lines: int, col_per_line: int) -> list[str]:
     return [ln for ln in lines if ln]
 
 
+# ---------------- 标点规范化 ----------------
+
+_CJK_CHAR = r"[㐀-䶿一-鿿豈-﫿]"
+_HALF_PUNCT = {",": "，", ";": "；", ":": "：", "?": "？", "！": "！", "!": "！"}
+
+
+def normalize_cjk_punct(text: str) -> str:
+    """CJK 语境中的半角标点转全角。
+
+    标点的前或后紧邻 CJK 字符即转换；数字小数点等不受影响。
+    """
+    def repl(m: re.Match) -> str:
+        ch = m.group(0)
+        return _HALF_PUNCT.get(ch, ch)
+
+    # 标点前为 CJK：lookbehind 在标点位置检查其前字符
+    # 标点后为 CJK：lookahead 必须放在标点匹配之后
+    punct = r"[,;?!:！]"
+    pattern = re.compile(
+        rf"(?:(?<={_CJK_CHAR}){punct}|{punct}(?={_CJK_CHAR}))"
+    )
+    return pattern.sub(repl, text)
+
+
+def _make_unit(words: list[Word]) -> Unit:
+    return Unit(words, "".join(w.text for w in words).strip(),
+                words[0].start, words[-1].end)
+
+
+def _split_oversized_units(units: list[Unit], max_dur: float) -> list[Unit]:
+    """把超过 max_dur 的 unit 在最接近 start+max_dur 的词边界切开，循环处理。"""
+    result: list[Unit] = []
+    for unit in units:
+        pieces = [unit]
+        while pieces[-1].end - pieces[-1].start > max_dur and len(pieces[-1].words) > 1:
+            cur = pieces[-1]
+            target = cur.start + max_dur
+            # 在目标时刻 ±2.5s 范围内，选停顿最大的词边界（更像分句点）；
+            # 并列时取离目标最近
+            best_i = 1
+            best_key: tuple[float, float] = (float("inf"), float("inf"))
+            for i in range(1, len(cur.words)):
+                gap = cur.words[i].start - cur.words[i - 1].end
+                delta = abs(cur.words[i].start - target)
+                key = (-gap if delta <= 2.5 else 0.0, delta)
+                if key < best_key:
+                    best_key, best_i = key, i
+            left = _make_unit(cur.words[:best_i])
+            right = _make_unit(cur.words[best_i:])
+            pieces[-1:] = [left, right]
+        result.extend(pieces)
+    return result
+
+
 # ---------------- 条目打包 ----------------
 
 def build_cues(
@@ -225,7 +315,9 @@ def build_cues(
     max_cps = float(scfg.get("max_chars_per_second", 17))
     min_gap = float(scfg.get("min_gap_ms", 30)) / 1000.0
 
-    units = _build_units(segments)
+    pause_split_s = float(scfg.get("pause_split_ms", 300)) / 1000.0
+    units = _build_units(segments, pause_split_s=pause_split_s)
+    units = _split_oversized_units(units, max_dur)
     if not units:
         return []
 
@@ -265,7 +357,7 @@ def build_cues(
 
     cues: list[Cue] = []
     for group in merged:
-        text = "".join(u.text for u in group).strip()
+        text = normalize_cjk_punct("".join(u.text for u in group).strip())
         lines = _wrap_lines(text, max_lines, col_per_line)
         cues.append(Cue(0, group[0].start, group[-1].end, lines))
 

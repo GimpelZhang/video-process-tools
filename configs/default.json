@@ -18,7 +18,7 @@
     "log_prob_threshold": -1.0,
     "temperatures": [0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
     "batch_size": 16,
-    "initial_prompt": "以下是普通话的技术演讲，夹杂英文术语时保留英文原文。CARLA, Cosmos, GPU, simulation, reinforcement learning, autonomous driving, neural network, token, benchmark。"
+    "initial_prompt": "以下是普通话的技术演讲，夹杂英文术语时保留英文原文。CARLA, NVIDIA, Cosmos, Cosmos Transfer, SimBody, GPU, simulation, reinforcement learning, autonomous driving, neural network, token, benchmark。"
   },
   "segmentation": {
     "max_lines": 2,
