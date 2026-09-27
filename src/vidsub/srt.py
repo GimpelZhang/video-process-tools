@@ -271,6 +271,14 @@ def normalize_cjk_punct(text: str) -> str:
     return pattern.sub(repl, text)
 
 
+def _normalize_unit_punct(units: list[Unit]) -> None:
+    """逐 unit 规范化标点；unit 末尾标点借下一 unit 首字符做 lookahead。"""
+    for i, unit in enumerate(units):
+        nxt = units[i + 1].text[:1] if i + 1 < len(units) else ""
+        text = normalize_cjk_punct(unit.text + nxt)
+        unit.text = text[: len(text) - len(nxt)] if nxt else text
+
+
 def _make_unit(words: list[Word]) -> Unit:
     return Unit(words, "".join(w.text for w in words).strip(),
                 words[0].start, words[-1].end)
@@ -318,6 +326,7 @@ def build_cues(
     pause_split_s = float(scfg.get("pause_split_ms", 300)) / 1000.0
     units = _build_units(segments, pause_split_s=pause_split_s)
     units = _split_oversized_units(units, max_dur)
+    _normalize_unit_punct(units)
     if not units:
         return []
 
