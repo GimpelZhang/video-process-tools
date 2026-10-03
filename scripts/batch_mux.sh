@@ -26,6 +26,11 @@ while IFS= read -r video <&3 || [ -n "$video" ]; do
     skip=$((skip + 1))
     continue
   fi
+  if ! grep -q -- "-->" "$srt"; then
+    echo "[SKIP] 字幕文件为空（无条目）：$stem"
+    skip=$((skip + 1))
+    continue
+  fi
 
   hard="data/output/${stem}.subbed.mp4"
   soft="data/output/${stem}.soft.mp4"
