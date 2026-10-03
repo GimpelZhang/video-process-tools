@@ -53,6 +53,32 @@ vidsub mux input.mp4 data/srt/input.reviewed.srt --soft
 #    → 软字幕版（不重编码视频）
 ```
 
+## 批量处理（多个视频）
+
+把每个视频的绝对路径写入清单文件（每行一个），用两个脚本完成批量流水线：
+
+```bash
+# 清单示例 videos.txt：
+# /home/junchuan/Videos/Bench2Drive.mp4
+# /home/junchuan/Videos/HUGSIM.mp4
+
+# 1) 批量抽音 + 转写 + 校验（产物 data/audio/*.wav、data/srt/*.srt）
+bash scripts/batch_transcribe.sh videos.txt configs/batch2.json
+
+# 2) 人工校对（可直接就地修改 data/srt/*.srt），然后批量校验：
+#    见 scripts/batch_transcribe.sh 的清单用法，或逐个 vidsub validate
+
+# 3) 批量合成：每个视频同时产出硬烧录与软字幕
+bash scripts/batch_mux.sh videos.txt
+#    → data/output/<名称>.subbed.mp4 与 data/output/<名称>.soft.mp4
+```
+
+批量约定与注意事项：
+
+- **严格串行**：不要同时跑多个 GPU 转写/合成任务，会显存 OOM
+- 无语音的视频（转写为 0 段）自动跳过；无条目的空 SRT 在合成时按 SKIP 处理
+- 换一批主题时，复制 `configs/default.json` 改 `initial_prompt` 术语表即可（`batch2.json` 即第二批的示例，模型可直接指向本地缓存 `.hf-cache/large-v3`，离线运行）
+
 ## 人工校对约定
 
 - **只改正文，不要改序号与时间轴行**；确需调整时间请用字幕工具，改完重新 `validate`。
@@ -79,6 +105,9 @@ bash scripts/spotcheck.sh data/audio/input.wav 62.4 65.8 /tmp/clip.wav  # 抽片
 | nvenc 报错（ffmpeg 4.4） | 工具自动回退 `medium` 预设，再回退 libx264 |
 | 烧录后字幕是方块/缺字 | force_style 指定系统已安装的中文字体（Noto Sans CJK SC） |
 | 成片音轨兼容性差 | 源音轨为 Vorbis 时，成品自动转 AAC 192k |
+| `CUDA failed with error out of memory` | 有其他任务占用显存；批量脚本本身串行，勿并发跑第二个 GPU 任务 |
+| 批量处理时清单整行丢失/路径被截断 | ffmpeg 从 stdin 吞字节所致；勿让清单走 stdin，用脚本中的 FD3 方式 |
+| 抽音提示"时长差超过 100ms" | 仅警告（退出码 2），WAV 已正常生成，可继续转写 |
 
 ## 测试
 

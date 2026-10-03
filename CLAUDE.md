@@ -31,6 +31,10 @@ mp4 → ffmpeg 抽 16kHz WAV → faster-whisper(Whisper large-v3) 转写
 .venv/bin/vidsub mux input.mp4 x.reviewed.srt --soft     # 软字幕
 .venv/bin/vidsub mux input.mp4 x.srt --sample --ss 60 --duration 5  # 5 秒样式小样
 python scripts/cer.py 机器稿.srt 校对稿.srt             # CER + 英文保留率
+
+# 批量（清单文件每行一个视频绝对路径）
+bash scripts/batch_transcribe.sh videos.txt configs/batch2.json  # 批量抽音+转写+校验
+bash scripts/batch_mux.sh videos.txt                             # 批量硬烧录+软字幕
 ```
 
 ## 代码结构（`src/vidsub/`）
@@ -56,6 +60,16 @@ python scripts/cer.py 机器稿.srt 校对稿.srt             # CER + 英文保�
 - CJK 相邻半角标点转全角（`srt.py` 的 `normalize_cjk_punct`），切分行后行首标点要移回上行
 - **硬烧录**：字幕渲染进画面像素，必可见，视频需重编码；**软字幕**：mov_text 独立字幕轨，视频 `-c copy` 零损失、可开关，但依赖播放器支持。两者同源一份校对 SRT
 - 源片音轨可能是 Vorbis，硬烧录时顺带转 AAC 192k
+
+## 批量处理经验（第二批 12 个视频实测，勿重蹈覆辙）
+
+- **清单绝不能走子命令的 stdin**：ffmpeg 默认会从 stdin 读键盘指令，若清单经 `while read` 的 stdin 喂入，ffmpeg 会吞掉若干字节，导致整行丢失或路径被截断（如 `/home/...` 变成 `me/...`）。脚本统一用 **FD3 读清单**（`while read ... <&3; done 3< "$LIST"`），所有子命令显式 `</dev/null`。写任何新的批量脚本都照此办理
+- **extract 退出码 2 = 警告不是失败**：源片与 WAV 时长差 >100ms 时返回 2（WAV 已正常写出），应继续转写；0=正常，其余=失败
+- **GPU 任务严禁并发**：曾因手动补转写与批次并发触发 `CUDA out of memory`。批量脚本严格串行；批次运行期间不要手动插入 GPU 转写/合成任务
+- **无语音视频**：转写返回 0 段（如纯操作录屏，可用 volumedetect 确认 mean_volume 极低），批处理按 NOSPEECH 跳过并删除空 SRT；`batch_mux.sh` 对不含 `-->` 的空 SRT 按 SKIP 处理，避免空 SRT 导致 subtitles filter 初始化失败
+- **离线复用模型**：配置中 `model` 可直接指向本地目录 `.hf-cache/large-v3`（见 `configs/batch2.json`），无需联网下载
+- **校对稿可能就地修改**：用户不一定按 `*.reviewed.srt` 命名复制，可能直接改原 SRT。不要凭文件名判断是否校对过；批量 validate 全部通过即继续
+- 批次日志统一写 `data/logs/`；后台跑用 `nohup ... </dev/null > data/logs/x.log 2>&1`，配合 Monitor 过滤 `[OK]/[FAIL]/[SKIP]/完成` 跟踪进度
 
 ## 约定
 
