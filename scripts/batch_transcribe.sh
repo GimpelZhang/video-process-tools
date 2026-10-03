@@ -29,8 +29,13 @@ while IFS= read -r video <&3 || [ -n "$video" ]; do
 
   echo "=================================================================="
   echo "[BATCH] 处理：$video"
-  if .venv/bin/vidsub extract "$video" -o "$wav" \
-      && .venv/bin/vidsub transcribe "$wav" -o "$srt" --config "$CONFIG" > /tmp/.batch_tr.log 2>&1; then
+  .venv/bin/vidsub extract "$video" -o "$wav" </dev/null
+  rc_extract=$?
+  # extract rc：0=正常，2=时长差>100ms 警告（WAV 已写出，可继续），其余=失败
+  if [ "$rc_extract" -eq 0 ] || [ "$rc_extract" -eq 2 ]; then
+    .venv/bin/vidsub transcribe "$wav" -o "$srt" --config "$CONFIG" </dev/null > /tmp/.batch_tr.log 2>&1
+  fi
+  if [ "$rc_extract" -eq 0 ] || [ "$rc_extract" -eq 2 ]; then
     cat /tmp/.batch_tr.log
     if grep -q "0 段" /tmp/.batch_tr.log; then
       echo "[NOSPEECH] $stem（无语音轨，跳过校验）"
