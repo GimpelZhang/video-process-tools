@@ -43,7 +43,7 @@ while IFS= read -r video <&3 || [ -n "$video" ]; do
       nospeech=$((nospeech + 1))
       continue
     fi
-    if .venv/bin/vidsub validate "$srt" --video "$video"; then
+    if .venv/bin/vidsub validate "$srt" --video "$video" </dev/null; then
       echo "[OK] $stem"
       ok=$((ok + 1))
     else
