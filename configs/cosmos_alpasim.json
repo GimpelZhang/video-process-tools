@@ -1,0 +1,52 @@
+{
+  "transcribe": {
+    "model": ".hf-cache/large-v3",
+    "device": "cuda",
+    "compute_type": "float16",
+    "language": "zh",
+    "task": "transcribe",
+    "beam_size": 5,
+    "best_of": 5,
+    "vad_filter": true,
+    "vad_min_silence_duration_ms": 500,
+    "vad_speech_pad_ms": 200,
+    "word_timestamps": true,
+    "condition_on_previous_text": false,
+    "hallucination_silence_threshold": 2.0,
+    "no_speech_threshold": 0.6,
+    "compression_ratio_threshold": 2.4,
+    "log_prob_threshold": -1.0,
+    "temperatures": [0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
+    "batch_size": 16,
+    "initial_prompt": "以下是普通话的技术演讲，夹杂英文术语时保留英文原文。Cosmos, Cosmos Transfer, Cosmos Predict, Cosmos Reason, AlpaSim, ALPA, NVIDIA, CARLA, NuRec, GPU, world model, foundation model, diffusion model, generative AI, simulation, reinforcement learning, autonomous driving, neural network, token, benchmark, sensor, lidar, radar, camera, policy, end-to-end, C++, Python。"
+  },
+  "segmentation": {
+    "max_lines": 2,
+    "hanzi_per_line": 20,
+    "min_duration_s": 1.5,
+    "max_duration_s": 7.0,
+    "max_chars_per_second": 17,
+    "gap_ms": 60,
+    "min_gap_ms": 30,
+    "pause_split_ms": 300
+  },
+  "style": {
+    "font_name": "Noto Sans CJK SC",
+    "font_size": 18,
+    "primary_colour": "&H00FFFFFF",
+    "outline_colour": "&H00000000",
+    "border_style": 1,
+    "outline": 2,
+    "shadow": 0.5,
+    "margin_v": 12
+  },
+  "mux": {
+    "video_encoder": "h264_nvenc",
+    "nvenc_preset": "p4",
+    "cq": 23,
+    "cpu_preset": "medium",
+    "crf": 20,
+    "audio_codec": "aac",
+    "audio_bitrate": "192k"
+  }
+}
